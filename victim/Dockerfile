@@ -1,6 +1,7 @@
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/Bogota
 ENV WAZUH_MANAGER=wazuh.manager
 ENV WAZUH_AGENT_NAME=victim01
 

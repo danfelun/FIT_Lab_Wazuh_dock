@@ -8,6 +8,10 @@ services:
     environment:
       WAZUH_MANAGER: wazuh.manager
       WAZUH_AGENT_NAME: victim01
+      TZ: America/Bogota
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     
 
   attacker01:
@@ -19,3 +23,8 @@ services:
     tty: true
     stdin_open: true
     command: ["sleep", "infinity"]
+    environment:
+      TZ: America/Bogota
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
