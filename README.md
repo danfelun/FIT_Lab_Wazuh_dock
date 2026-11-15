@@ -35,7 +35,7 @@ sudo docker logs --tail 60 victim01    # inicio, rsyslog y agente
 
 Abrir el Dashboard en **https://localhost** y seleccionar **Endpoints**: el agente `victim01` debe estar **Active**. Si el navegador advierte sobre el certificado autofirmado, revisar que se está accediendo al entorno local previsto. Utilizar las credenciales definidas en la configuración del laboratorio; no reutilizarlas en producción.
 
-> **Agente desconectado tras reconstruir:** si `docker logs victim01` informa `Duplicate agent name: victim01`, el Manager conserva el registro anterior mientras la víctima ha perdido su clave. Para una sesión limpia con agente **001**, utiliza el procedimiento destructivo `reset --yes` que aparece a continuación. No se eliminan registros de agentes de forma silenciosa en un arranque habitual.
+> **Identidad estable del agente:** cuando `victim01` se conecta, `lab.sh` guarda una copia protegida de `client.keys` en `.lab-state/`. Al reconstruir o recrear el contenedor, restaura esa identidad **antes de iniciarlo**. Si Manager conserva un agente pero no existe una clave coincidente, el script se detiene y no crea duplicados. Nunca publiques `.lab-state/` en Git.
 
 ## Reiniciar todo desde cero (agente 001)
 
@@ -46,7 +46,7 @@ sudo ./lab.sh reset --yes
 sudo ./lab.sh status
 ```
 
-El script reconstruye `victim01` y `attacker01` sin caché, levanta primero los componentes centrales de Wazuh, espera a que el Manager esté disponible, inicia `victim01` y **verifica** que se registre como **`001 — Active`**. Si esto no se cumple, informa del error y muestra registros para su diagnóstico. No vuelve a borrar nada automáticamente.
+El script reconstruye `victim01` y `attacker01` sin caché, levanta primero los componentes centrales de Wazuh, espera a que el Manager esté disponible, **comprueba que no haya agentes registrados**, inicia `victim01` y **verifica** que se registre como **`001 — Active`**. Si esto no se cumple, informa del error y muestra registros para su diagnóstico. No vuelve a borrar nada automáticamente.
 
 ## Demostración 1 — autenticación SSH controlada con Hydra
 
@@ -93,7 +93,7 @@ sudo ./lab.sh start      # vuelve a iniciar
 sudo ./lab.sh rebuild    # solo si cambian los Dockerfile; sin borrar volumenes
 ```
 
-**Atención:** `rebuild` puede perder `client.keys` y causar un registro duplicado; para una instalación realmente nueva con ID `001`, ejecuta `sudo ./lab.sh reset --yes`. Para pausas habituales utiliza `stop`/`start`.
+**Persistencia de identidad:** `stop` y `rebuild` respaldan `client.keys` en `.lab-state/` con permisos restrictivos. `rebuild` restaura la identidad anterior en el contenedor nuevo, manteniendo el mismo ID del agente. `reset --yes` borra también esa copia y obliga a que el registro comience con ID `001`. No utilices `docker compose down` manualmente antes de un primer `start` exitoso si aún no existe respaldo de `client.keys`.
 
 ## Diagnóstico mínimo
 
@@ -108,3 +108,14 @@ sudo docker logs --tail 80 victim01
 Zona horaria prevista: **America/Bogota**. Si los eventos SSH no aparecen, revisar primero que `/var/log/auth.log` reciba mensajes y que `wazuh-logcollector` esté activo. La corrección de permisos de `rsyslog` está incorporada en `victim/entrypoint.sh`.
 
 **Seguridad:** no publicar claves TLS, certificados privados ni contraseñas reales. No ejecutar ataques fuera de los contenedores aislados. Los puertos publicados por Docker deben restringirse al equipo o la red de prácticas.
+
+## Protección de archivos locales
+
+Asegúrate de incluir la siguiente línea en `.gitignore` del repositorio:
+
+```gitignore
+/.lab-state/
+/config/wazuh_indexer_ssl_certs/
+```
+
+El directorio `.lab-state/` contiene material de autenticación del agente: **no enviarlo a GitHub, no compartirlo con estudiantes y limitar su acceso al administrador**. El script añade también una exclusión local en `.git/info/exclude` cuando el proyecto es un repositorio Git estándar.
