@@ -10,6 +10,7 @@ ENV WAZUH_AGENT_NAME=victim01
 # ==========================================
 
 RUN apt-get update && apt-get install -y \
+    tzdata \
     curl \
     gnupg \
     apt-transport-https \
@@ -29,7 +30,9 @@ RUN apt-get update && apt-get install -y \
     && mkdir -p /opt/lab \
     && echo 'archivo sensible' > /opt/lab/crownjewels.txt \
     && chmod 600 /opt/lab/crownjewels.txt \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*\
+    && ln -snf /usr/share/zoneinfo/America/Bogota /etc/localtime \
+    && echo "America/Bogota" > /etc/timezone \
 
 # ==========================================
 # 2. Repositorio e instalacion del agente Wazuh
