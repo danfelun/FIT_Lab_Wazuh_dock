@@ -8,8 +8,7 @@ services:
     environment:
       WAZUH_MANAGER: wazuh.manager
       WAZUH_AGENT_NAME: victim01
-    networks:
-      - wazuh_net
+    
 
   attacker01:
     build:
@@ -20,10 +19,8 @@ services:
     tty: true
     stdin_open: true
     command: ["sleep", "infinity"]
-    networks:
-      - wazuh_net
+    
 
 networks:
   wazuh_net:
-    external: true
-    name: single-node_default
+    driver: bridge

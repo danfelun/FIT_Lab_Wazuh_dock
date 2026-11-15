@@ -1,0 +1,19 @@
+# Copias de seguridad
+*.bak
+*.backup
+backups/
+
+# Certificados y claves privadas generadas
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Variables locales y secretos
+.env
+.env.*
+!.env.example
+
+# Archivos temporales
+*.log
+*.tmp
