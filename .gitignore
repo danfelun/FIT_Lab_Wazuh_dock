@@ -17,3 +17,4 @@ backups/
 # Archivos temporales
 *.log
 *.tmp
+/config/wazuh_indexer_ssl_certs/
