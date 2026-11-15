@@ -1,298 +1,91 @@
 # Wazuh SIEM Lab – Single-node + Attacker01 + Victim01
 
-![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-blue)
-![Docker](https://img.shields.io/badge/Deploy-Docker-2496ED)
-![Security](https://img.shields.io/badge/Cybersecurity-Lab-red)
-![Status](https://img.shields.io/badge/Status-Functional-brightgreen)
+Laboratorio académico aislado con **Wazuh 4.14.10** (Manager, Indexer y Dashboard), `victim01` (Ubuntu, SSH, rsyslog y agente Wazuh) y `attacker01` (Ubuntu con Hydra y herramientas de red). Pruebas diseñadas exclusivamente para los contenedores del proyecto, no para sistemas externos.
 
-Procedimiento para levantar **todos los contenedores** del laboratorio en un solo flujo:
+## Requisitos
 
-- **Wazuh manager**
-- **Wazuh indexer**
-- **Wazuh dashboard**
-- **victim01**: Ubuntu con `sshd`, `rsyslog` y `wazuh-agent`
-- **attacker01**: Ubuntu con `nmap`, `hydra` y cliente SSH
+- Ubuntu o Linux con Docker Engine y Docker Compose v2; espacio y memoria suficientes para Wazuh.
+- Puertos requeridos libres, en especial **443** para el Dashboard. El archivo Compose principal también publica 1514, 1515, 514/UDP, 55000 y 9200; mantener estos accesos restringidos al laboratorio.
+- Ejecutar desde la raíz del repositorio `FIT_Lab_Wazuh_dock`.
+- Los archivos `docker-compose.yml`, `docker-compose.lab.yml`, `generate-indexer-certs.yml` y `config/certs.yml` deben existir. Los certificados privados se generan localmente y **no se publican en Git**.
 
-Este README unifica el despliegue base de Wazuh en modo **single-node** y el despliegue adicional de **attacker01** y **victim01**. El despliegue base usa un `docker-compose.yml` con **un manager, un indexer y un dashboard**. Antes de iniciar, en Linux se debe ajustar `vm.max_map_count=262144`, generar certificados con `generate-indexer-certs.yml`, y luego levantar el entorno con `docker compose up -d`. El complemento del laboratorio agrega `victim01` y `attacker01`, conectados a la red del stack oficial, y se levanta combinando `docker-compose.yml` con `docker-compose.lab.yml`. 
-
----
-
-## 1. Estructura esperada
-
-Ubícate en la carpeta del laboratorio. Debes tener, como mínimo:
-
-```text
-single-node/
-├── docker-compose.yml
-├── docker-compose.lab.yml
-├── generate-indexer-certs.yml
-├── attacker/
-│   └── Dockerfile
-├── victim/
-│   ├── Dockerfile
-│   ├── entrypoint.sh
-│   ├── ossec.conf
-│   └── sshd_config
-└── config/
-    └── ...
-```
-
----
-
-## 2. Preparación del host
-
-En Linux, ejecuta:
+## Iniciar el laboratorio
 
 ```bash
-sudo sysctl -w vm.max_map_count=262144
+cd ~/Documentos/ReposGitHub/FIT_Lab_Wazuh_dock
+chmod +x lab.sh
+sudo ./lab.sh start
 ```
 
----
-
-## 3. Generación de certificados
-
-Ejecuta:
+El script ajusta `vm.max_map_count` si hace falta, valida Docker Compose, genera los certificados TLS **solo cuando no existen**, construye las imágenes personalizadas cuando corresponde y levanta los cinco servicios. **No borra volúmenes ni certificados existentes.** En una instalación nueva puede ser necesario esperar a que Indexer, Manager y Dashboard terminen de inicializarse.
 
 ```bash
-sudo docker compose -f generate-indexer-certs.yml run --rm generator
+sudo ./lab.sh status                   # estado de contenedores y agentes
+sudo ./lab.sh logs                     # registros recientes
+sudo docker logs --tail 60 victim01    # inicio, rsyslog y agente
 ```
 
-Si el proyecto ya incluye la carpeta de certificados funcional y no necesitas regenerarlos, este paso puede omitirse. Si aparecen errores de montaje de archivos `.pem`, regenera primero los certificados.
+Abrir el Dashboard en **https://localhost** y seleccionar **Endpoints**: el agente `victim01` debe estar **Active**. Si el navegador advierte sobre el certificado autofirmado, revisar que se está accediendo al entorno local previsto. Utilizar las credenciales definidas en la configuración del laboratorio; no reutilizarlas en producción.
 
----
+> **Agente desconectado tras reconstruir:** revisa `sudo docker logs victim01`. Si aparece `Duplicate agent name: victim01`, el Manager conserva el registro anterior mientras el contenedor recreado perdió su identidad. Comprueba primero el ID con `sudo ./lab.sh status`. En este laboratorio de un solo agente puedes retirar **solo** el registro anterior desde `manage_agents` en el Manager y permitir el nuevo enrolamiento. No borres identidades en entornos compartidos.
 
-## 4. Levantar todo el laboratorio en un solo comando
+## Demostración 1 — autenticación SSH controlada con Hydra
 
-Desde la carpeta `single-node/`, ejecuta:
+1. Abrir una terminal en el atacante:
+
+   ```bash
+   sudo docker exec -it attacker01 bash
+   ```
+
+2. Dentro de `attacker01`, preparar una lista corta de contraseñas **exclusivamente de laboratorio** y ejecutar Hydra contra el contenedor `victim01`:
+
+   ```bash
+   printf 'admin\n123456\nqwerty\nDemo123!\n' > /tmp/passlist.txt
+   hydra -l demo -P /tmp/passlist.txt ssh://victim01 -t 4 -V
+   ```
+
+   La cuenta de laboratorio es `demo`; su contraseña de prueba se establece en el Dockerfile. Esta secuencia debe producir intentos fallidos y potencialmente una autenticación exitosa. No dirijas la prueba a direcciones ajenas al entorno.
+
+3. Desde otra terminal de Ubuntu, verificar que los mensajes SSH llegan a la víctima:
+
+   ```bash
+   sudo docker exec victim01 bash -c \
+     "grep -Ei 'Failed password|Accepted password' /var/log/auth.log | tail -n 20"
+   ```
+
+4. En **Wazuh → Threat Hunting → Events**, seleccionar el agente `victim01`, usar un intervalo de tiempo que incluya la prueba y actualizar. Revisar las reglas y los campos `data.srcip`, `data.dstuser` y `full_log` cuando estén presentes. Un log correcto no garantiza que se dispare una regla de severidad alta: interpretar los eventos efectivamente producidos.
+
+## Demostración 2 — integridad de archivos (FIM)
+
+Desde Ubuntu, modificar el archivo supervisado:
 
 ```bash
-sudo docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d --build
+sudo docker exec victim01 bash -c \
+  'echo "Prueba FIM CIPAS $(date)" >> /opt/lab/crownjewels.txt'
 ```
 
-Este comando levanta:
+En **File Integrity Monitoring** o **Threat Hunting → Events**, filtrar por `victim01` y buscar el cambio de integridad (habitualmente la regla `550`). La detección puede tardar hasta el siguiente escaneo, según `victim/ossec.conf`.
 
-- el stack principal de Wazuh
-- los contenedores `victim01` y `attacker01`
-
----
-
-## 5. Verificación de contenedores
+## Apagar, iniciar de nuevo y reconstruir
 
 ```bash
-sudo docker ps
+sudo ./lab.sh stop       # detiene sin borrar datos
+sudo ./lab.sh start      # vuelve a iniciar
+sudo ./lab.sh rebuild    # solo si cambian los Dockerfile; sin borrar volumenes
 ```
 
-Deberías ver en estado `Up`:
+**Atención:** al reconstruir `victim01` se puede perder su clave de enrolamiento si no está persistida. Revisa el estado del agente al terminar. Para un reinicio ordinario utiliza `stop`/`start`, no `rebuild`.
 
-- `wazuh.manager`
-- `wazuh.indexer`
-- `wazuh.dashboard`
-- `victim01`
-- `attacker01`
-
-> La primera vez el entorno puede tardar cerca de un minuto mientras Wazuh Indexer inicializa índices y patrones.
-
----
-
-## 6. Acceso a Wazuh
-
-Abre en el navegador:
-
-```text
-https://localhost
-```
-
-Credenciales usadas en el laboratorio:
-
-```text
-Usuario: admin
-Password: SecretPassword
-```
-
----
-
-## 7. Validación de red
-
-Entra al contenedor atacante:
+## Diagnóstico mínimo
 
 ```bash
-sudo docker exec -it attacker01 bash
+sudo ./lab.sh status
+sudo docker exec victim01 date
+sudo docker exec victim01 /var/ossec/bin/wazuh-control status
+sudo docker exec victim01 tail -n 30 /var/log/auth.log
+sudo docker logs --tail 80 victim01
 ```
 
-Pruebas básicas:
+Zona horaria prevista: **America/Bogota**. Si los eventos SSH no aparecen, revisar primero que `/var/log/auth.log` reciba mensajes y que `wazuh-logcollector` esté activo. La corrección de permisos de `rsyslog` está incorporada en `victim/entrypoint.sh`.
 
-```bash
-ping -c 2 victim01
-nmap -sV victim01
-```
-
-La validación esperada es conectividad correcta y puerto `22/tcp` abierto en la víctima. El README del add-on propone precisamente esta validación con `ping` y `nmap`. fileciteturn4file0
-
----
-
-## 8. Validación del agente de la víctima
-
-Revisa el agente:
-
-```bash
-sudo docker exec -it victim01 bash
-tail -n 50 /var/ossec/logs/ossec.log
-```
-
-En la interfaz de Wazuh:
-
-- entra a **Agents**
-- espera 1 a 2 minutos
-- `victim01` debe aparecer conectado
-
-El README del add-on también indica esta validación y el uso de `docker logs victim01` como apoyo. fileciteturn4file0
-
----
-
-## 9. Usuario de prueba en la víctima
-
-```text
-usuario: demo
-contraseña: Demo123!
-```
-
----
-
-## 10. Generación de eventos para la demo
-
-### 10.1 Ataque desde attacker01
-
-Dentro de `attacker01`:
-
-```bash
-printf 'admin\n123456\nqwerty\nDemo123!\n' > /tmp/passlist.txt
-hydra -l demo -P /tmp/passlist.txt ssh://victim01 -t 4 -V
-```
-
-### 10.2 Acceso SSH manual
-
-```bash
-ssh demo@victim01
-```
-
-### 10.3 Cambio de archivo para FIM
-
-Dentro de `victim01` como root:
-
-```bash
-echo "intrusion $(date)" >> /opt/lab/crownjewels.txt
-```
-
-> En algunos montajes Docker, los eventos SSH reales no siempre se reflejan en `auth.log` como en una VM completa. Si el laboratorio está configurado con `lab_auth.log` o `fake_auth.log`, asegúrate de crear esos archivos y reiniciar el agente antes de la demo.
-
----
-
-## 11. Validación en Wazuh
-
-En la GUI, revisa:
-
-- **Threat Hunting**
-- **Events**
-- filtro recomendado:
-
-```text
-agent.name: victim01
-```
-
-Eventos esperados:
-
-- actividad del agente
-- eventos de syslog
-- eventos FIM sobre `/opt/lab/crownjewels.txt`
-- eventos de autenticación si el parser/logsource está correctamente configurado
-
----
-
-## 12. Troubleshooting rápido
-
-### 12.1 Docker no conecta al daemon
-
-Prueba primero:
-
-```bash
-sudo docker ps
-sudo docker compose version
-```
-
-### 12.2 Indexer o dashboard no levantan
-
-Revisa logs:
-
-```bash
-sudo docker compose logs --tail=100 wazuh.indexer
-sudo docker compose logs --tail=100 wazuh.dashboard
-sudo docker compose logs --tail=100 wazuh.manager
-```
-
-### 12.3 Error con certificados `.pem`
-
-Regenera certificados:
-
-```bash
-sudo docker compose down -v
-sudo docker compose -f generate-indexer-certs.yml run --rm generator
-sudo docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d --build
-```
-
-### 12.4 El agente no aparece
-
-Dentro de `victim01`:
-
-```bash
-/var/ossec/bin/wazuh-control restart
-tail -n 100 /var/ossec/logs/ossec.log
-```
-
-### 12.5 No aparecen eventos SSH
-
-Crea los archivos si tu `ossec.conf` los referencia:
-
-```bash
-touch /var/log/lab_auth.log /var/log/fake_auth.log
-chmod 644 /var/log/lab_auth.log /var/log/fake_auth.log
-/var/ossec/bin/wazuh-control restart
-```
-
-Y genera eventos controlados:
-
-```bash
-echo "Mar 24 20:40:01 victim01 sshd[1234]: Failed password for invalid user admin from 172.19.0.6 port 54522 ssh2" >> /var/log/lab_auth.log
-echo "Mar 24 20:40:09 victim01 sshd[9999]: Accepted password for demo from 172.19.0.6 port 54522 ssh2" >> /var/log/lab_auth.log
-```
-
----
-
-## 13. Apagado del laboratorio
-
-Para bajar todo:
-
-```bash
-sudo docker compose -f docker-compose.yml -f docker-compose.lab.yml down
-```
-
-Si también quieres eliminar volúmenes:
-
-```bash
-sudo docker compose -f docker-compose.yml -f docker-compose.lab.yml down -v
-```
-
----
-
-## 14. Resumen operativo
-
-Comandos mínimos:
-
-```bash
-cd ~/ruta/al/proyecto/single-node
-sudo sysctl -w vm.max_map_count=262144
-sudo docker compose -f generate-indexer-certs.yml run --rm generator
-sudo docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d --build
-sudo docker ps
-```
-
-Con eso queda levantado el escenario completo en un solo flujo.
+**Seguridad:** no publicar claves TLS, certificados privados ni contraseñas reales. No ejecutar ataques fuera de los contenedores aislados. Los puertos publicados por Docker deben restringirse al equipo o la red de prácticas.
