@@ -30,9 +30,9 @@ RUN apt-get update && apt-get install -y \
     && mkdir -p /opt/lab \
     && echo 'archivo sensible' > /opt/lab/crownjewels.txt \
     && chmod 600 /opt/lab/crownjewels.txt \
-    && rm -rf /var/lib/apt/lists/*\
     && ln -snf /usr/share/zoneinfo/America/Bogota /etc/localtime \
     && echo "America/Bogota" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
 # ==========================================
 # 2. Repositorio e instalacion del agente Wazuh
