@@ -19,8 +19,3 @@ services:
     tty: true
     stdin_open: true
     command: ["sleep", "infinity"]
-    
-
-networks:
-  wazuh_net:
-    driver: bridge
