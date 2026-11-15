@@ -25,7 +25,7 @@ chmod +x lab.sh
 sudo ./lab.sh start
 ```
 
-El script ajusta `vm.max_map_count` si hace falta, valida Docker Compose, genera los certificados TLS **solo cuando no existen**, construye las imágenes personalizadas cuando corresponde y levanta los cinco servicios. **No borra volúmenes ni certificados existentes.** En una instalación nueva puede ser necesario esperar a que Indexer, Manager y Dashboard terminen de inicializarse.
+El script valida Docker Compose, ajusta `vm.max_map_count` si hace falta, genera los certificados TLS **solo si faltan**, inicia primero Indexer/Manager/Dashboard y espera a que el Manager esté preparado antes de levantar `victim01`. Finalmente comprueba que el agente esté **Active**. `start` no elimina volúmenes ni certificados.
 
 ```bash
 sudo ./lab.sh status                   # estado de contenedores y agentes
@@ -35,7 +35,18 @@ sudo docker logs --tail 60 victim01    # inicio, rsyslog y agente
 
 Abrir el Dashboard en **https://localhost** y seleccionar **Endpoints**: el agente `victim01` debe estar **Active**. Si el navegador advierte sobre el certificado autofirmado, revisar que se está accediendo al entorno local previsto. Utilizar las credenciales definidas en la configuración del laboratorio; no reutilizarlas en producción.
 
-> **Agente desconectado tras reconstruir:** revisa `sudo docker logs victim01`. Si aparece `Duplicate agent name: victim01`, el Manager conserva el registro anterior mientras el contenedor recreado perdió su identidad. Comprueba primero el ID con `sudo ./lab.sh status`. En este laboratorio de un solo agente puedes retirar **solo** el registro anterior desde `manage_agents` en el Manager y permitir el nuevo enrolamiento. No borres identidades en entornos compartidos.
+> **Agente desconectado tras reconstruir:** si `docker logs victim01` informa `Duplicate agent name: victim01`, el Manager conserva el registro anterior mientras la víctima ha perdido su clave. Para una sesión limpia con agente **001**, utiliza el procedimiento destructivo `reset --yes` que aparece a continuación. No se eliminan registros de agentes de forma silenciosa en un arranque habitual.
+
+## Reiniciar todo desde cero (agente 001)
+
+**Operación destructiva exclusivamente para este proyecto:** elimina todos sus contenedores, redes administradas, volúmenes, alertas históricas y registros de agentes. Conserva los archivos del repositorio y los certificados locales. Haz un respaldo si necesitas conservar el historial.
+
+```bash
+sudo ./lab.sh reset --yes
+sudo ./lab.sh status
+```
+
+El script reconstruye `victim01` y `attacker01` sin caché, levanta primero los componentes centrales de Wazuh, espera a que el Manager esté disponible, inicia `victim01` y **verifica** que se registre como **`001 — Active`**. Si esto no se cumple, informa del error y muestra registros para su diagnóstico. No vuelve a borrar nada automáticamente.
 
 ## Demostración 1 — autenticación SSH controlada con Hydra
 
@@ -82,7 +93,7 @@ sudo ./lab.sh start      # vuelve a iniciar
 sudo ./lab.sh rebuild    # solo si cambian los Dockerfile; sin borrar volumenes
 ```
 
-**Atención:** al reconstruir `victim01` se puede perder su clave de enrolamiento si no está persistida. Revisa el estado del agente al terminar. Para un reinicio ordinario utiliza `stop`/`start`, no `rebuild`.
+**Atención:** `rebuild` puede perder `client.keys` y causar un registro duplicado; para una instalación realmente nueva con ID `001`, ejecuta `sudo ./lab.sh reset --yes`. Para pausas habituales utiliza `stop`/`start`.
 
 ## Diagnóstico mínimo
 
