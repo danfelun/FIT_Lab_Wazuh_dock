@@ -1,4 +1,12 @@
-# Wazuh SIEM Lab – Single-node + Attacker01 + Victim01
+# Wazuh SIEM Lab — Single-node + Attacker01 + Victim01
+
+![Wazuh](https://img.shields.io/badge/Wazuh-4.14.10-005EB8?style=for-the-badge&logo=elasticstack&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-Ubuntu%2022.04-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![SSH](https://img.shields.io/badge/SSH-Monitoring-34495E?style=for-the-badge&logo=gnubash&logoColor=white)
+![Hydra](https://img.shields.io/badge/Hydra-Simulation-9B59B6?style=for-the-badge)
+![FIM](https://img.shields.io/badge/FIM-File%20Integrity%20Monitoring-008577?style=for-the-badge)
+
 
 Laboratorio académico aislado con **Wazuh 4.14.10** (Manager, Indexer y Dashboard), `victim01` (Ubuntu, SSH, rsyslog y agente Wazuh) y `attacker01` (Ubuntu con Hydra y herramientas de red). Pruebas diseñadas exclusivamente para los contenedores del proyecto, no para sistemas externos.
 
