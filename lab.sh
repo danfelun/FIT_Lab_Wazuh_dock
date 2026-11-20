@@ -222,7 +222,7 @@ start_victim() {
   else
     if [[ -z "$cid" ]]; then
       say 'Creando victim01 DETENIDO para validar/restaurar identidad antes de arrancar...'
-      "${COMPOSE[@]}" create --no-deps victim01
+      "${COMPOSE[@]}" create --build victim01
     fi
     restore_key_if_needed
     "${COMPOSE[@]}" start victim01
